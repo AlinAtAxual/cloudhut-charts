@@ -10,7 +10,7 @@ image:
   repository: cloudhut/kowl
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "v1.5.0"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -18,7 +18,7 @@ fullnameOverride: ""
 
 serviceAccount:
   # Specifies whether a service account should be created
-  create: true
+  create: false
   # Annotations to add to the service account
   annotations: {}
   # The name of the service account to use.
@@ -41,8 +41,8 @@ securityContext:
   # runAsUser: 1000
 
 service:
-  type: ClusterIP
-  port: 80
+  type: LoadBalancer
+  port: 8081
   annotations: {}
   targetPort: http
 
@@ -53,7 +53,7 @@ ingress:
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
-    - host: chart-example.local
+    - host: platform.local
       paths:
         - path: /
           pathType: ImplementationSpecific
@@ -90,8 +90,37 @@ affinity: {}
 kowl:
   # Config.yaml is required for Kowl and Kowl Business.
   # See reference config: https://github.com/cloudhut/kowl/blob/master/docs/config/kowl.yaml)
-  config: {}
-  # roles:
+  config:
+    kafka:
+      brokers:
+        - local-kafka-bootstrap:9093
+      schemaRegistry:
+        enabled: true
+        urls: https://axual-local-schema-registry-slave:25000
+        tls:
+            enabled: true
+            insecureSkipTlsVerify: true
+      tls:
+        enabled: true
+        caFilepath: "/etc/tls/key-material/cluster-operator.crt"
+        certFilepath: "/etc/tls/key-material/cluster-operator.crt"
+        keyFilepath: "/etc/tls/key-material/cluster-operator.key"
+        passphrase: "Wmc5aUZuNjZrellj" # It's the base64 encoding of this string: "Zg9iFn66kzYc"
+        insecureSkipTlsVerify: true
+    connect:
+      enabled: true
+      clusters:
+        - name: "axual-local-axual-connect"
+          url: "https://axual-local-axual-connect:11000"
+          tls:
+            enabled: true
+            insecureSkipTlsVerify: true
+        - name: distributor
+          tls:
+            enabled: false
+          url: http://local-distributor-connect-api:8083
+
+
   # roleBindings:
 
 # Additional environment variables for kowl
@@ -102,10 +131,18 @@ extraEnv: ""
 # Additional environment variables for kowl mapped from Secret or ConfigMap
 extraEnvFrom: ""
 
-# Add additional volumes, e. g. for tls keys
-extraVolumes: ""
+extraVolumes:
+  # The Strimzi-kafka broker certificate becomes a volume for this
+  - name: "local-kafka-brokers-certificates"
+    secret:
+      secretName: "local-cluster-operator-certs"
+      optional: false
+
 # Add additional volumes mounts, e. g. for tls keys
-extraVolumeMounts: ""
+extraVolumeMounts:
+  - name: "local-kafka-brokers-certificates"
+    mountPath: "/etc/tls/key-material"
+    readOnly: true
 
 # Add additional containers, e. g. for oauth2-proxy
 extraContainers: {}
